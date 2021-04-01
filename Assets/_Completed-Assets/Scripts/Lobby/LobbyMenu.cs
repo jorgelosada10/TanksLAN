@@ -48,7 +48,10 @@ public class LobbyMenu : MonoBehaviour
         {
             if (!NetworkClient.active)
             {
-                manager.networkAddress = serverIP;
+                if (serverIP != null)
+                    manager.networkAddress = serverIP;
+                else
+                    manager.networkAddress = "localhost"; // For debugging. To be removed
                 manager.StartClient();
             }
         }
