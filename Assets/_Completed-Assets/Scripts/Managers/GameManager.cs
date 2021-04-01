@@ -1,11 +1,13 @@
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
+using Mirror;
 
 namespace Complete
 {
-    public class GameManager : MonoBehaviour
+    public class GameManager : NetworkBehaviour
     {
         public int m_NumRoundsToWin = 5;            // The number of rounds a single player has to win to win the game
         public float m_StartDelay = 3f;             // The delay between the start of RoundStarting and RoundPlaying phases
@@ -15,38 +17,99 @@ namespace Complete
         public GameObject m_TankPrefab;             // Reference to the prefab the players will control
         public TankManager[] m_Tanks;               // A collection of managers for enabling and disabling different aspects of the tanks
 
-        
+        private GameObject[] m_TanksTest;               // A collection of managers for enabling and disabling different aspects of the tanks
+
         private int m_RoundNumber;                  // Which round the game is currently on
         private WaitForSeconds m_StartWait;         // Used to have a delay whilst the round starts
         private WaitForSeconds m_EndWait;           // Used to have a delay whilst the round or game ends
         private TankManager m_RoundWinner;          // Reference to the winner of the current round.  Used to make an announcement of who won
         private TankManager m_GameWinner;           // Reference to the winner of the game.  Used to make an announcement of who won
 
+        [SerializeField] EnemySpawner m_EnemySpawner;
+
+        private TanksNetworkManager m_TanksNetwork;
+        private SyncList<TankManager> m_TanksData = new SyncList<TankManager>();
+
+        [SyncVar]
+        private bool m_AreClientsReady = false;
+
+        private void Awake()
+        {
+            m_TanksNetwork = FindObjectOfType<TanksNetworkManager>();
+        }
+
+        public override void OnStartServer()
+        {
+            StartCoroutine(AddPlayersToMatchController());
+        }
+
+        // For the SyncDictionary to properly fire the update callback, we must
+        // wait a frame before adding the players to the already spawned MatchController
+        IEnumerator AddPlayersToMatchController()
+        {
+            while (!m_AreClientsReady)
+            {
+                yield return null;
+                foreach (NetworkConnection connection in NetworkServer.connections.Values)
+                {
+                    if (connection.isReady)
+                    {
+                        m_AreClientsReady = true;
+                    }
+                    else
+                    {
+                        m_AreClientsReady = false;
+                    }
+                }
+            }
+
+            List<TankManager> tanks = m_TanksNetwork.GetPlayersTanks();
+
+            foreach (TankManager tank in tanks)
+            {
+                m_TanksData.Add(tank);
+            }
+        }
 
         private void Start()
         {
+            StartCoroutine(InitGame());
+        }
+
+        IEnumerator InitGame()
+        {
+            while (!m_AreClientsReady)
+            {
+                yield return null;
+            }
+            Debug.Log(m_TanksData.Count);
+
             // Create the delays so they only have to be made once
-            m_StartWait = new WaitForSeconds (m_StartDelay);
-            m_EndWait = new WaitForSeconds (m_EndDelay);
+            m_StartWait = new WaitForSeconds(m_StartDelay);
+            m_EndWait = new WaitForSeconds(m_EndDelay);
 
             SpawnAllTanks();
             SetCameraTargets();
 
             // Once the tanks have been created and the camera is using them as targets, start the game
-            StartCoroutine (GameLoop ());
+            StartCoroutine(GameLoop());
         }
 
 
         private void SpawnAllTanks()
         {
-            // For all the tanks...
-            for (int i = 0; i < m_Tanks.Length; i++)
+            if (isServer)
+            {
+                m_EnemySpawner.SpawnEnemies();
+            }
+
+            //For all the tanks...
+            for (int i = 0; i < m_TanksData.Count; i++)
             {
                 // ... create them, set their player number and references needed for control
-                m_Tanks[i].m_Instance =
-                    Instantiate (m_TankPrefab, m_Tanks[i].m_SpawnPoint.position, m_Tanks[i].m_SpawnPoint.rotation) as GameObject;
-                m_Tanks[i].m_PlayerNumber = i + 1;
-                m_Tanks[i].Setup();
+                //m_Tanks[i].m_Instance = tanks[i];
+                m_TanksData[i].m_PlayerNumber = i + 1;
+                m_TanksData[i].Setup();
             }
         }
 
@@ -72,25 +135,25 @@ namespace Complete
         private IEnumerator GameLoop()
         {
             // Start off by running the 'RoundStarting' coroutine but don't return until it's finished
-            yield return StartCoroutine (RoundStarting());
+            yield return StartCoroutine(RoundStarting());
 
             // Once the 'RoundStarting' coroutine is finished, run the 'RoundPlaying' coroutine but don't return until it's finished
-            yield return StartCoroutine (RoundPlaying());
+            yield return StartCoroutine(RoundPlaying());
 
             // Once execution has returned here, run the 'RoundEnding' coroutine, again don't return until it's finished
-            yield return StartCoroutine (RoundEnding());
+            yield return StartCoroutine(RoundEnding());
 
             // This code is not run until 'RoundEnding' has finished.  At which point, check if a game winner has been found
             if (m_GameWinner != null)
             {
                 // If there is a game winner, restart the level
-                SceneManager.LoadScene (0);
+                SceneManager.LoadScene(0);
             }
             else
             {
                 // If there isn't a winner yet, restart this coroutine so the loop continues
                 // Note that this coroutine doesn't yield.  This means that the current version of the GameLoop will end
-                StartCoroutine (GameLoop());
+                StartCoroutine(GameLoop());
             }
         }
 
@@ -162,26 +225,23 @@ namespace Complete
         // This is used to check if there is one or fewer tanks remaining and thus the round should end
         private bool OneTankLeft()
         {
-            // Skip all rounds logic
+            //// Start the count of tanks left at zero.
+            //int numTanksLeft = 0;
 
-/*            // Start the count of tanks left at zero.
-            int numTanksLeft = 0;
+            //// Go through all the tanks...
+            //for (int i = 0; i < m_Tanks.Length; i++)
+            //{
+            //    // ... and if they are active, increment the counter.
+            //    if (m_Tanks[i].m_Instance.activeSelf)
+            //        numTanksLeft++;
+            //}
 
-            // Go through all the tanks...
-            for (int i = 0; i < m_Tanks.Length; i++)
-            {
-                // ... and if they are active, increment the counter.
-                if (m_Tanks[i].m_Instance.activeSelf)
-                    numTanksLeft++;
-            }
-
-            // If there are one or fewer tanks remaining return true, otherwise return false.
-            return numTanksLeft <= 1; */
-
+            //// If there are one or fewer tanks remaining return true, otherwise return false.
+            //return numTanksLeft <= 1;
             return false;
         }
-        
-        
+
+
         // This function is to find out if there is a winner of the round
         // This function is called with the assumption that 1 or fewer tanks are currently active
         private TankManager GetRoundWinner()
