@@ -1,10 +1,11 @@
 ﻿using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
+using Mirror;
 
 namespace Complete
 {
-    public class TankMovement : MonoBehaviour
+    public class TankMovement : NetworkBehaviour
     {
         public int m_PlayerNumber = 1;              // Used to identify which tank belongs to which player.  This is set by this tank's manager
         public float m_Speed = 12f;                 // How fast the tank moves forward and back
@@ -51,7 +52,6 @@ namespace Complete
 
             isDisabled = false;
         }
-
 
         private void OnDisable()
         {
@@ -103,12 +103,20 @@ namespace Complete
         // Event called when this player's 'Move' action is triggered by the New Input System
         public void OnTankMove(InputAction.CallbackContext obj)
         {
+            if(!isLocalPlayer)
+            {
+                return;
+            }
             m_MovementInputValue = obj.ReadValue<Vector2>().y;
         }
 
         // Event called when this player's 'Turn' action is triggered by the New Input System
         public void OnTankTurn(InputAction.CallbackContext obj)
         {
+            if (!isLocalPlayer)
+            {
+                return;
+            }
             m_TurnInputValue = obj.ReadValue<Vector2>().x;
         }
 

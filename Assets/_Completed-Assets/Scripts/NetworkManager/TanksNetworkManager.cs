@@ -16,6 +16,8 @@ public class TanksNetworkManager : NetworkManager
     [HideInInspector] public List<RoomPlayer> m_RoomPlayers;
     [HideInInspector] public List<TankManager> m_Tanks = new List<TankManager>();
 
+    private static int m_PlayerIndex = 1;
+
     public struct Client
     {
         public NetworkIdentity identity;
@@ -33,13 +35,17 @@ public class TanksNetworkManager : NetworkManager
     public override void OnClientConnect(NetworkConnection conn)
     {
         Debug.Log("New client has connected");
-        base.OnClientConnect(conn);
+        if(!IsSceneActive(m_GameplayScene))
+            base.OnClientConnect(conn);
     }
 
     public override void OnServerAddPlayer(NetworkConnection conn)
     {
         Debug.Log("New player added to the server");
         GameObject player = Instantiate(m_RoomPlayerPrefab);
+
+        player.GetComponent<RoomPlayer>().m_Nickname = $"Player{m_PlayerIndex}";
+        m_PlayerIndex++;
 
         NetworkServer.AddPlayerForConnection(conn, player);
     }
@@ -65,12 +71,7 @@ public class TanksNetworkManager : NetworkManager
 
     public void CheckReadyToBegin(int readyPlayers)
     {
-        RoomChangeScene(m_GameplayScene);
-    }
-
-    public void RoomChangeScene(string newSceneName)
-    {
-        ServerChangeScene(newSceneName);
+        ServerChangeScene(m_GameplayScene);
     }
 
     public override void OnServerReady(NetworkConnection conn)
@@ -79,9 +80,9 @@ public class TanksNetworkManager : NetworkManager
 
         if (conn != null && conn.identity != null)
         {
-            GameObject roomPlayer = conn.identity.gameObject;
+            RoomPlayer roomPlayer = conn.identity.gameObject.GetComponent<RoomPlayer>();
 
-            if (roomPlayer != null && roomPlayer.GetComponent<RoomPlayer>() != null)
+            if (roomPlayer.gameObject != null && roomPlayer != null)
             {
                 Transform startPos = GetStartPosition();
                 GameObject player = startPos != null
@@ -90,10 +91,12 @@ public class TanksNetworkManager : NetworkManager
 
                 NetworkServer.ReplacePlayerForConnection(conn, player, true);
 
-                TankManager tankManager = new TankManager();
+                TankManager tankManager = roomPlayer.m_Tank;
                 tankManager.m_Instance = player;
-                tankManager.m_SpawnPoint = playerPrefab.transform;
-                tankManager.m_PlayerColor = Color.red;
+                tankManager.m_SpawnPoint = startPos;
+
+                roomPlayer.DisableRoomSettings();
+
                 m_Tanks.Add(tankManager);
             }
         }
@@ -102,5 +105,45 @@ public class TanksNetworkManager : NetworkManager
     public List<TankManager> GetPlayersTanks()
     {
         return m_Tanks;
+    }
+
+    public override void OnServerConnect(NetworkConnection conn)
+    {
+        //OnServerReady();
+    }
+
+    public override void OnServerDisconnect(NetworkConnection conn)
+    {
+        GameObject disconnectedPlayer = conn.identity.gameObject;
+        FindObjectOfType<GameManager>().RemovePlayer(disconnectedPlayer);
+    }
+
+    void OnGUI()
+    {
+        NetworkManager manager = NetworkManager.singleton;
+        if (manager == null)
+            return;
+
+        if (manager.mode == NetworkManagerMode.ServerOnly)
+        {
+            if (GUILayout.Button("Stop Server"))
+            {
+                manager.StopServer();
+            }
+        }
+        else if (manager.mode == NetworkManagerMode.Host)
+        {
+            if (GUILayout.Button("Stop Host"))
+            {
+                manager.StopHost();
+            }
+        }
+        else if (manager.mode == NetworkManagerMode.ClientOnly)
+        {
+            if (GUILayout.Button("Stop Client"))
+            {
+                manager.StopClient();
+            }
+        }
     }
 }
