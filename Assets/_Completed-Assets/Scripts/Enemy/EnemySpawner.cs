@@ -10,12 +10,14 @@ public class EnemySpawner : NetworkBehaviour
 
     [SerializeField] private Color m_TankColor;
 
-    public void SpawnEnemies()
+    public List<Transform> SpawnEnemies()
     {
+        List<Transform> tanksTransform = new List<Transform>();
         for (int i = 0; i < m_NumberOfEnemies; i++)
         {
             int random = Random.Range(0, m_SpawnPositions.Count);
             var enemy = Instantiate(m_EnemyPrefab, m_SpawnPositions[random].position, m_SpawnPositions[random].rotation);
+            tanksTransform.Add(enemy.transform);
             m_SpawnPositions.RemoveAt(random);
             enemy.GetComponent<SyncColor>().m_SyncTankColor = m_TankColor;
 
@@ -26,5 +28,7 @@ public class EnemySpawner : NetworkBehaviour
 
             NetworkServer.Spawn(enemy);
         }
+
+        return tanksTransform;
     }
 }

@@ -2,10 +2,11 @@
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
+using Mirror;
 
 namespace Complete
 {
-    public class TankShooting : MonoBehaviour
+    public class TankShooting : NetworkBehaviour
     {
         public int m_PlayerNumber = 1;              // Used to identify the different players
         public Rigidbody m_Shell;                   // Prefab of the shell
@@ -57,17 +58,26 @@ namespace Complete
         // Event called when this player's 'Fire' action is triggered by the New Input System
         public void OnFire(InputAction.CallbackContext obj)
         {
+            if(!isLocalPlayer)
+            {
+                return;
+            }
+
             if (!isDisabled)
             {
                 // When the value read is higher than the default Button Press Point, the key has been pressed
                 if (obj.ReadValue<float>() >= InputSystem.settings.defaultButtonPressPoint)
                 {
-                    Fire();
+                    CmdFire();
+                    // Change the clip to the firing clip and play it
+                    m_ShootingAudio.clip = m_FireClip;
+                    m_ShootingAudio.Play();
                 }
             }
         }
 
-        private void Fire()
+        [Command]
+        private void CmdFire()
         {
             // Create an instance of the shell and store a reference to it's rigidbody
             Rigidbody shellInstance;
@@ -77,9 +87,7 @@ namespace Complete
             // Set the shell's velocity to the launch force in the fire position's forward direction
             shellInstance.velocity = m_CurrentLaunchForce * m_FireTransform.forward;
 
-            // Change the clip to the firing clip and play it
-            m_ShootingAudio.clip = m_FireClip;
-            m_ShootingAudio.Play();
+            NetworkServer.Spawn(shellInstance.gameObject);
 
             // Reset the launch force.  This is a precaution in case of missing button events
             m_CurrentLaunchForce = m_MinLaunchForce;

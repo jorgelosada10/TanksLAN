@@ -10,7 +10,6 @@ public class SyncColor : NetworkBehaviour
 
     private void SyncTankColor(Color oldColor, Color newColor)
     {
-        Debug.Log("Color changed");
         foreach (MeshRenderer meshRenderer in GetComponentsInChildren<MeshRenderer>())
         {
             meshRenderer.material.color = newColor;
