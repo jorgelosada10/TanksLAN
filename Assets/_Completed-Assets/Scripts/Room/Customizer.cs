@@ -52,4 +52,12 @@ public class Customizer : MonoBehaviour
     {
         m_RoomPlayer.CmdSetColor(color);
     }
+
+    public void SetSlidersInteractable(bool interactable)
+    {
+        foreach(Slider slider in m_RGBSliders)
+        {
+            slider.interactable = interactable;
+        }
+    }
 }

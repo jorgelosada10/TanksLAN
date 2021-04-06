@@ -89,11 +89,15 @@ public class RoomPlayer : NetworkBehaviour
         {
             m_ReadyText.text = "Ready";
             CmdChangeReadyState(false);
+            m_Nicknamer.SetInputFieldInteractable(true);
+            m_Customizer.SetSlidersInteractable(true);
         }
         else
         {
             m_ReadyText.text = "Cancel";
             CmdChangeReadyState(true);
+            m_Nicknamer.SetInputFieldInteractable(false);
+            m_Customizer.SetSlidersInteractable(false);
         }
     }
 
@@ -135,7 +139,7 @@ public class RoomPlayer : NetworkBehaviour
     [ClientRpc]
     private void RpcDisableCanvas()
     {
-        //m_Canvas.gameObject.SetActive(false);
+        m_Canvas.gameObject.SetActive(false);
 
         m_TankModel.SetActive(false);
     }
