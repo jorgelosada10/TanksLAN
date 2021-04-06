@@ -9,6 +9,7 @@ public class RoomPlayer : NetworkBehaviour
 {
     [SerializeField] private GameObject m_TankModel;
     [SerializeField] private Text m_ReadyText;
+    [SerializeField] private Camera m_Camera;
 
     [SyncVar(hook = nameof(SyncNickname))]
     public string m_Nickname;
@@ -40,6 +41,8 @@ public class RoomPlayer : NetworkBehaviour
         m_Canvas.gameObject.SetActive(false);
 
         m_TankModel.SetActive(false);
+
+        m_Camera.gameObject.SetActive(false);
     }
 
     public override void OnStartServer()
@@ -54,6 +57,8 @@ public class RoomPlayer : NetworkBehaviour
         m_Canvas.gameObject.SetActive(true);
 
         m_TankModel.SetActive(true);
+
+        m_Camera.gameObject.SetActive(true);
 
         m_Nicknamer.SetDefaultValue(m_Nickname);
     }
@@ -142,6 +147,8 @@ public class RoomPlayer : NetworkBehaviour
         m_Canvas.gameObject.SetActive(false);
 
         m_TankModel.SetActive(false);
+
+        m_Camera.gameObject.SetActive(false);
     }
 
     public static void UpdatePlayerIndexDueDisc()
