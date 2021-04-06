@@ -33,9 +33,6 @@ namespace Complete
 
         private void OnEnable()
         {
-            // When the tank is turned on, make sure it's not kinematic
-            m_Rigidbody.isKinematic = false;
-
             // Also reset the input values
             m_MovementInputValue = 0f;
             m_TurnInputValue = 0f;
@@ -45,19 +42,16 @@ namespace Complete
             // it "think" it move from (0,0,0) to the spawn point, creating a huge trail of smoke
             m_particleSystems = GetComponentsInChildren<ParticleSystem>();
 
-            for (int i = 0; i < m_particleSystems.Length; ++i)
-            {
-                m_particleSystems[i].Play();
-            }
+            //for (int i = 0; i < m_particleSystems.Length; ++i)
+            //{
+            //    m_particleSystems[i].Play();
+            //}
 
             isDisabled = false;
         }
 
         private void OnDisable()
         {
-            // When the tank is turned off, set it to kinematic so it stops moving
-            m_Rigidbody.isKinematic = true;
-
             // Stop all particle system so it "reset" it's position to the actual one instead of thinking we moved when spawning
             for (int i = 0; i < m_particleSystems.Length; ++i)
             {
@@ -70,6 +64,10 @@ namespace Complete
 
         private void Start()
         {
+            if (!isLocalPlayer)
+            {
+                return;
+            }
             // Store the original pitch of the audio source
             m_OriginalPitch = m_MovementAudio.pitch;
 
@@ -97,13 +95,17 @@ namespace Complete
 
         private void Update()
         {
+            if (!isLocalPlayer)
+            {
+                return;
+            }
             EngineAudio();
         }
 
         // Event called when this player's 'Move' action is triggered by the New Input System
         public void OnTankMove(InputAction.CallbackContext obj)
         {
-            if(!isLocalPlayer)
+            if (!isLocalPlayer)
             {
                 return;
             }
@@ -150,11 +152,15 @@ namespace Complete
 
         private void FixedUpdate()
         {
+            if (!isLocalPlayer)
+            {
+                return;
+            }
+
             // Adjust the rigidbodies position and orientation in FixedUpdate
             Move();
             Turn();
         }
-
 
         private void Move()
         {

@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 
-public class Nickname : MonoBehaviour
+public class Nicknamer : MonoBehaviour
 {
     [SerializeField] private Text m_NicknameText;
     private InputField m_NicknameInput;
@@ -14,6 +14,7 @@ public class Nickname : MonoBehaviour
     void Awake()
     {
         m_NicknameInput = GetComponentInChildren<InputField>();
+        m_NicknameInput.onValueChanged.AddListener(delegate { UpdateNickname(); });
         m_NicknameInput.onEndEdit.AddListener(delegate { SetNickname(); });
 
         m_RoomPlayer = GetComponentInParent<RoomPlayer>();
@@ -31,10 +32,19 @@ public class Nickname : MonoBehaviour
         
     }
 
-    private void SetNickname()
+    public void SetDefaultValue(string nickname)
+    {
+        m_NicknameText.text = nickname;
+    }
+
+    private void UpdateNickname()
     {
         m_Nickname = m_NicknameInput.text;
         m_NicknameText.text = m_Nickname;
+    }
+
+    private void SetNickname()
+    {
         m_RoomPlayer.CmdSetNickname(m_Nickname);
     }
 }

@@ -10,19 +10,15 @@ public class TanksNetworkManager : NetworkManager
     [Header("Room Settings")]
     [SerializeField] private GameObject m_RoomPlayerPrefab;
 
+    private GameManager m_GameManager;
+
     [Scene]
     public string m_GameplayScene = "";
 
     [HideInInspector] public List<RoomPlayer> m_RoomPlayers;
     [HideInInspector] public List<TankManager> m_Tanks = new List<TankManager>();
 
-    private static int m_PlayerIndex = 1;
-
-    public struct Client
-    {
-        public NetworkIdentity identity;
-        public TankManager tank;
-    }
+    private Dictionary<NetworkConnection, RoomPlayer> m_Clients = new Dictionary<NetworkConnection, RoomPlayer>();
 
     public override void Awake()
     {
@@ -35,19 +31,39 @@ public class TanksNetworkManager : NetworkManager
     public override void OnClientConnect(NetworkConnection conn)
     {
         Debug.Log("New client has connected");
-        if(!IsSceneActive(m_GameplayScene))
-            base.OnClientConnect(conn);
+        // OnClientConnect by default calls AddPlayer but it should not do
+        // that when we have online/offline scenes. so we need the
+        // clientLoadedScene flag to prevent it.
+        if (!clientLoadedScene)
+        {
+            // Ready/AddPlayer is usually triggered by a scene load
+            // completing. if no scene was loaded, then Ready/AddPlayer it
+            // here instead.
+            if (!NetworkClient.ready) NetworkClient.Ready();
+            if (autoCreatePlayer)
+            {
+                NetworkClient.AddPlayer();
+            }
+        }
     }
 
     public override void OnServerAddPlayer(NetworkConnection conn)
     {
+        if (IsSceneActive(offlineScene))
+        {
+            return;
+        }
         Debug.Log("New player added to the server");
+
         GameObject player = Instantiate(m_RoomPlayerPrefab);
 
-        player.GetComponent<RoomPlayer>().m_Nickname = $"Player{m_PlayerIndex}";
-        m_PlayerIndex++;
-
         NetworkServer.AddPlayerForConnection(conn, player);
+
+        if (IsSceneActive(m_GameplayScene))
+        {
+            conn.isReady = true;
+            AddTankInstance(conn, true);
+        }
     }
 
     public void ReadyStatusChanged()
@@ -66,12 +82,7 @@ public class TanksNetworkManager : NetworkManager
         }
 
         if (currentPlayers == readyPlayers)
-            CheckReadyToBegin(readyPlayers);
-    }
-
-    public void CheckReadyToBegin(int readyPlayers)
-    {
-        ServerChangeScene(m_GameplayScene);
+            ServerChangeScene(m_GameplayScene);
     }
 
     public override void OnServerReady(NetworkConnection conn)
@@ -80,24 +91,40 @@ public class TanksNetworkManager : NetworkManager
 
         if (conn != null && conn.identity != null)
         {
-            RoomPlayer roomPlayer = conn.identity.gameObject.GetComponent<RoomPlayer>();
+            AddTankInstance(conn, false);
+        }
+        else if (IsSceneActive(m_GameplayScene))
+        {
+            conn.isReady = false;            
+        }
+    }
 
-            if (roomPlayer.gameObject != null && roomPlayer != null)
+    private void AddTankInstance(NetworkConnection conn, bool isGameOngoing)
+    {
+        RoomPlayer roomPlayer = conn.identity.gameObject.GetComponent<RoomPlayer>();
+        m_Clients.Add(conn, roomPlayer);
+
+        if (roomPlayer.gameObject != null && roomPlayer != null)
+        {
+            Transform startPos = GetStartPosition();
+            GameObject player = startPos != null
+                ? Instantiate(playerPrefab, startPos.position, startPos.rotation)
+                : Instantiate(playerPrefab);
+
+            TankManager tankManager = roomPlayer.m_Tank;
+            tankManager.m_Instance = player;
+
+            NetworkServer.ReplacePlayerForConnection(conn, tankManager.m_Instance, true);
+
+            tankManager.m_SpawnPoint = startPos;
+
+            roomPlayer.DisableRoomSettings();
+
+            m_Tanks.Add(tankManager);
+
+            if(isGameOngoing)
             {
-                Transform startPos = GetStartPosition();
-                GameObject player = startPos != null
-                    ? Instantiate(playerPrefab, startPos.position, startPos.rotation)
-                    : Instantiate(playerPrefab);
-
-                NetworkServer.ReplacePlayerForConnection(conn, player, true);
-
-                TankManager tankManager = roomPlayer.m_Tank;
-                tankManager.m_Instance = player;
-                tankManager.m_SpawnPoint = startPos;
-
-                roomPlayer.DisableRoomSettings();
-
-                m_Tanks.Add(tankManager);
+                m_GameManager.AddPlayer(tankManager, conn);
             }
         }
     }
@@ -107,15 +134,46 @@ public class TanksNetworkManager : NetworkManager
         return m_Tanks;
     }
 
-    public override void OnServerConnect(NetworkConnection conn)
-    {
-        //OnServerReady();
-    }
-
     public override void OnServerDisconnect(NetworkConnection conn)
     {
         GameObject disconnectedPlayer = conn.identity.gameObject;
-        FindObjectOfType<GameManager>().RemovePlayer(disconnectedPlayer);
+        if(IsSceneActive(onlineScene))
+        {
+            NetworkServer.Destroy(disconnectedPlayer);
+            RoomPlayer.UpdatePlayerIndexDueDisc();
+        }
+        else
+        {
+            NetworkServer.Destroy(m_Clients[conn].gameObject);
+            m_GameManager.RemovePlayer(disconnectedPlayer);
+
+            for(int i = 0; i < m_Tanks.Count; i++)
+            {
+                if(m_Tanks[i].m_Instance == disconnectedPlayer)
+                {
+                    m_Tanks.RemoveAt(i);
+                }
+            }
+            NetworkServer.Destroy(disconnectedPlayer);
+        }
+    }
+
+    public void DestroyAllRoomPlayers()
+    {
+        foreach(RoomPlayer roomPlayer in m_RoomPlayers)
+        {
+            if(roomPlayer != null)
+            {
+
+                NetworkServer.Destroy(roomPlayer.gameObject);
+            }
+            RoomPlayer.ResetPlayerIndexDueDisc();
+        }
+    }
+
+    public void SetGameManagerInstance(GameManager gameManager)
+    {
+        m_GameManager = gameManager;
     }
 
     void OnGUI()
@@ -135,7 +193,8 @@ public class TanksNetworkManager : NetworkManager
         {
             if (GUILayout.Button("Stop Host"))
             {
-                manager.StopHost();
+                //manager.StopHost();
+                NetworkManager.Shutdown();
             }
         }
         else if (manager.mode == NetworkManagerMode.ClientOnly)
