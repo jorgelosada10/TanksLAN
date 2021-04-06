@@ -47,4 +47,9 @@ public class Nicknamer : MonoBehaviour
     {
         m_RoomPlayer.CmdSetNickname(m_Nickname);
     }
+
+    public void SetInputFieldInteractable(bool interactable)
+    {
+        m_NicknameInput.interactable = interactable;
+    }
 }
