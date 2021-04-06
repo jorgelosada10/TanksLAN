@@ -66,8 +66,6 @@ namespace Complete
                 // ... set their material color to the color specific to this tank
                 renderers[i].material.color = m_PlayerColor;
             }
-
-            DisableControl();
         }
 
 
@@ -77,7 +75,7 @@ namespace Complete
             m_Movement.enabled = false;
             m_Shooting.enabled = false;
 
-            m_CanvasGameObject.SetActive (false);
+            //m_CanvasGameObject.SetActive (false);
         }
 
 
@@ -87,7 +85,7 @@ namespace Complete
             m_Movement.enabled = true;
             m_Shooting.enabled = true;
 
-            m_CanvasGameObject.SetActive (true);
+            //m_CanvasGameObject.SetActive (true);
         }
 
 

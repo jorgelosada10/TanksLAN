@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -15,22 +16,29 @@ namespace Complete
         public CameraControl m_CameraControl;       // Reference to the CameraControl script for control during different phases
         public Text m_MessageText;                  // Reference to the overlay Text to display winning text, etc
         public GameObject m_TankPrefab;             // Reference to the prefab the players will control
-        //public TankManager[] m_Tanks;               // A collection of managers for enabling and disabling different aspects of the tanks
+        private List<TankManager> m_Tanks = new List<TankManager>();              // A collection of managers for enabling and disabling different aspects of the tanks
+        private List<Transform> m_TanksTransform = new List<Transform>();
+        private List<TankManager> m_PendingPlayers = new List<TankManager>();
 
-        private int m_RoundNumber;                  // Which round the game is currently on
+        [SyncVar]
+        private int m_RoundNumber = 1;                  // Which round the game is currently on
         private WaitForSeconds m_StartWait;         // Used to have a delay whilst the round starts
         private WaitForSeconds m_EndWait;           // Used to have a delay whilst the round or game ends
         private TankManager m_RoundWinner;          // Reference to the winner of the current round.  Used to make an announcement of who won
         private TankManager m_GameWinner;           // Reference to the winner of the game.  Used to make an announcement of who won
 
-        [SerializeField] EnemySpawner m_EnemySpawner;
+        [SerializeField] private EnemySpawner m_EnemySpawner;
+        private List<GameObject> m_Enemies = new List<GameObject>();
 
         private TanksNetworkManager m_TanksNetwork;
-        private SyncList<TankManager> m_TanksData = new SyncList<TankManager>();
-        private SyncList<Transform> m_TanksTransform = new SyncList<Transform>();
+        private bool m_PlayerReady = false;
 
         [SyncVar]
         private bool m_AreClientsReady = false;
+
+        private bool m_isRoundOngoing = false;
+
+        public bool m_IsPlayerJoining = false;
 
         private void Awake()
         {
@@ -39,12 +47,11 @@ namespace Complete
 
         public override void OnStartServer()
         {
-            StartCoroutine(AddPlayersToMatchController());
+            m_TanksNetwork.SetGameManagerInstance(this);
+            StartCoroutine(AddPlayers());
         }
 
-        // For the SyncDictionary to properly fire the update callback, we must
-        // wait a frame before adding the players to the already spawned MatchController
-        IEnumerator AddPlayersToMatchController()
+        IEnumerator AddPlayers()
         {
             while (!m_AreClientsReady)
             {
@@ -62,13 +69,22 @@ namespace Complete
                 }
             }
 
+            m_Enemies = m_EnemySpawner.CreateEnemies();
+            m_TanksTransform = m_EnemySpawner.GetEnemiesTransforms();
             List<TankManager> tanks = m_TanksNetwork.GetPlayersTanks();
 
-            foreach (TankManager tank in tanks)
+            for(int i = 0; i < tanks.Count; i++)
             {
-                m_TanksData.Add(tank);
-                m_TanksTransform.Add(tank.m_Instance.transform);
+                m_Tanks.Add(tanks[i]);
             }
+
+            for (int i = 0; i < m_Tanks.Count; i++)
+            {
+                m_TanksTransform.Add(m_Tanks[i].m_Instance.transform);
+            }
+            UpdateAllTanks();
+            SetCameraTargets();
+            RpcSyncTanks(m_Tanks, m_TanksTransform, m_Enemies);
         }
 
         private void Start()
@@ -78,72 +94,65 @@ namespace Complete
 
         IEnumerator InitGame()
         {
-            while (!m_AreClientsReady)
+            while (!m_PlayerReady)
             {
                 yield return null;
+                if (isServerOnly)
+                    m_PlayerReady = true;
             }
-            Debug.Log(m_TanksData.Count);
 
             // Create the delays so they only have to be made once
             m_StartWait = new WaitForSeconds(m_StartDelay);
             m_EndWait = new WaitForSeconds(m_EndDelay);
 
-            SpawnAllTanks();
-            SetCameraTargets();
-
             // Once the tanks have been created and the camera is using them as targets, start the game
             StartCoroutine(GameLoop());
         }
 
-
-        private void SpawnAllTanks()
+        private void UpdateAllTanks()
         {
-            if (isServer)
-            {
-                List<Transform> tanksTransform = m_EnemySpawner.SpawnEnemies();
-
-                for (int i = 0; i < tanksTransform.Count; i++)
-                {
-                    m_TanksTransform.Add(tanksTransform[i]);
-                }
-            }
-
             //For all the tanks...
-            for (int i = 0; i < m_TanksData.Count; i++)
+            for (int i = 0; i < m_Tanks.Count; i++)
             {
                 // ... create them, set their player number and references needed for control
-                //m_Tanks[i].m_Instance = tanks[i];
-                m_TanksData[i].m_PlayerNumber = i + 1;
-                m_TanksData[i].Setup();
+                m_Tanks[i].m_PlayerNumber = i + 1;
+                m_Tanks[i].Setup();
             }
         }
 
 
         private void SetCameraTargets()
         {
-            // Create a collection of transforms the same size as the number of tanks
-            Transform[] targets = new Transform[m_TanksTransform.Count];
-
-            // For each of these transforms...
-            for (int i = 0; i < targets.Length; i++)
-            {
-                // ... set it to the appropriate tank transform
-                targets[i] = m_TanksTransform[i].transform;
-            }
-
             // These are the targets the camera should follow
-            m_CameraControl.m_Targets = targets;
+            m_CameraControl.m_Targets = m_TanksTransform;
         }
 
 
         // This is called from start and will run each phase of the game one after another
         private IEnumerator GameLoop()
         {
-            // Start off by running the 'RoundStarting' coroutine but don't return until it's finished
-            yield return StartCoroutine(RoundStarting());
+            if (!m_isRoundOngoing)
+            {
+                // Start off by running the 'RoundStarting' coroutine but don't return until it's finished
 
-            // Once the 'RoundStarting' coroutine is finished, run the 'RoundPlaying' coroutine but don't return until it's finished
-            yield return StartCoroutine(RoundPlaying());
+                yield return StartCoroutine(RoundStarting());
+
+                // Once the 'RoundStarting' coroutine is finished, run the 'RoundPlaying' coroutine but don't return until it's finished
+                yield return StartCoroutine(RoundPlaying());
+            }
+
+            if (isServer)
+            {
+                // Increment the round number and display text showing the players what round it is
+                m_RoundNumber++;
+                m_isRoundOngoing = false;
+                if (m_PendingPlayers.Count > 0)
+                {
+                    AddPendingPlayersToGame();
+                }
+            }
+
+            yield return StartCoroutine(IsRoundOngoing());
 
             // Once execution has returned here, run the 'RoundEnding' coroutine, again don't return until it's finished
             yield return StartCoroutine(RoundEnding());
@@ -152,7 +161,21 @@ namespace Complete
             if (m_GameWinner != null)
             {
                 // If there is a game winner, restart the level
-                m_TanksNetwork.ServerChangeScene(m_TanksNetwork.offlineScene);
+                if(isServer)
+                {
+                    m_TanksNetwork.DestroyAllRoomPlayers();
+                }
+
+                if (m_TanksNetwork.mode == NetworkManagerMode.ServerOnly)
+                {
+                    m_TanksNetwork.StopServer();
+                }
+                else if (m_TanksNetwork.mode == NetworkManagerMode.Host)
+                {
+                    m_TanksNetwork.StopHost();
+                }
+
+                SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex - 2);
             }
             else
             {
@@ -162,6 +185,13 @@ namespace Complete
             }
         }
 
+        private IEnumerator IsRoundOngoing()
+        {
+            while (m_isRoundOngoing)
+            {
+                yield return null;
+            }
+        }
 
         private IEnumerator RoundStarting()
         {
@@ -172,14 +202,15 @@ namespace Complete
             // Snap the camera's zoom and position to something appropriate for the reset tanks
             m_CameraControl.SetStartPositionAndSize();
 
-            // Increment the round number and display text showing the players what round it is
-            m_RoundNumber++;
+            if(isServer)
+            {
+                m_isRoundOngoing = true;
+            }
             m_MessageText.text = "ROUND " + m_RoundNumber;
 
             // Wait for the specified length of time until yielding control back to the game loop
             yield return m_StartWait;
         }
-
 
         private IEnumerator RoundPlaying()
         {
@@ -226,24 +257,22 @@ namespace Complete
             yield return m_EndWait;
         }
 
-
         // This is used to check if there is one or fewer tanks remaining and thus the round should end
         private bool OneTankLeft()
         {
-            ////// Start the count of tanks left at zero.
-            //int numTanksLeft = 0;
+            //// Start the count of tanks left at zero.
+            int numTanksLeft = 0;
 
-            //// Go through all the tanks...
-            //for (int i = 0; i < m_TanksData.Count; i++)
-            //{
-            //    // ... and if they are active, increment the counter.
-            //    if (m_TanksData[i].m_Instance.activeSelf)
-            //        numTanksLeft++;
-            //}
+            // Go through all the tanks...
+            for (int i = 0; i < m_Tanks.Count; i++)
+            {
+                // ... and if they are active, increment the counter.
+                if (m_Tanks[i].m_Instance.activeSelf)
+                    numTanksLeft++;
+            }
 
             //// If there are one or fewer tanks remaining return true, otherwise return false.
-            //return numTanksLeft <= 1;
-            return false;
+            return numTanksLeft <= 1;
         }
 
 
@@ -252,12 +281,12 @@ namespace Complete
         private TankManager GetRoundWinner()
         {
             // Go through all the tanks...
-            for (int i = 0; i < m_TanksData.Count; i++)
+            for (int i = 0; i < m_Tanks.Count; i++)
             {
                 // ... and if one of them is active, it is the winner so return it
-                if (m_TanksData[i].m_Instance.activeSelf)
+                if (m_Tanks[i].m_Instance.activeSelf)
                 {
-                    return m_TanksData[i];
+                    return m_Tanks[i];
                 }
             }
 
@@ -270,12 +299,12 @@ namespace Complete
         private TankManager GetGameWinner()
         {
             // Go through all the tanks...
-            for (int i = 0; i < m_TanksData.Count; i++)
+            for (int i = 0; i < m_Tanks.Count; i++)
             {
                 // ... and if one of them has enough rounds to win the game, return it
-                if (m_TanksData[i].m_Wins == m_NumRoundsToWin)
+                if (m_Tanks[i].m_Wins == m_NumRoundsToWin)
                 {
-                    return m_TanksData[i];
+                    return m_Tanks[i];
                 }
             }
 
@@ -298,9 +327,9 @@ namespace Complete
             message += "\n\n\n\n";
 
             // Go through all the tanks and add each of their scores to the message
-            for (int i = 0; i < m_TanksData.Count; i++)
+            for (int i = 0; i < m_Tanks.Count; i++)
             {
-                message += m_TanksData[i].m_ColoredPlayerText + ": " + m_TanksData[i].m_Wins + " WINS\n";
+                message += m_Tanks[i].m_ColoredPlayerText + ": " + m_Tanks[i].m_Wins + " WINS\n";
             }
 
             // If there is a game winner, change the entire message to reflect that
@@ -314,37 +343,91 @@ namespace Complete
         // This function is used to turn all the tanks back on and reset their positions and properties
         private void ResetAllTanks()
         {
-            for (int i = 0; i < m_TanksData.Count; i++)
+            m_EnemySpawner.DisableEnemies();
+            m_EnemySpawner.EnableEnemies();
+            for (int i = 0; i < m_Tanks.Count; i++)
             {
-                m_TanksData[i].Reset();
+                m_Tanks[i].Reset();
             }
         }
 
 
         private void EnableTankControl()
         {
-            for (int i = 0; i < m_TanksData.Count; i++)
+            for (int i = 0; i < m_Tanks.Count; i++)
             {
-                m_TanksData[i].EnableControl();
+                m_Tanks[i].EnableControl();
             }
         }
 
 
         private void DisableTankControl()
         {
-            for (int i = 0; i < m_TanksData.Count; i++)
+            for (int i = 0; i < m_Tanks.Count; i++)
             {
-                m_TanksData[i].DisableControl();
+                m_Tanks[i].DisableControl();
             }
+        }
+
+        public void AddPlayer(TankManager tank, NetworkConnection conn)
+        {
+            m_PendingPlayers.Add(tank);
+            RpcDisablePendingPlayer(tank);
+            RpcSyncPendingPlayer(conn, m_Tanks, m_TanksTransform, m_Enemies);
+        }
+
+        private void AddPendingPlayersToGame()
+        {
+            foreach(TankManager pendingPlayer in m_PendingPlayers)
+            {
+                pendingPlayer.m_Instance.SetActive(false);
+                m_Tanks.Add(pendingPlayer);
+                m_TanksTransform.Add(pendingPlayer.m_Instance.transform);
+            }
+
+            UpdateAllTanks();
+            SetCameraTargets();
+            RpcSyncTanks(m_Tanks, m_TanksTransform, m_Enemies);
+            m_PendingPlayers.Clear();
+        }
+
+
+        [ClientRpc]
+        private void RpcSyncTanks(List<TankManager> tanks, List<Transform> tanksTransform, List<GameObject> enemies)
+        {
+            m_Tanks = tanks;
+            m_EnemySpawner.SetEnemies(enemies);
+            m_TanksTransform = tanksTransform;
+            UpdateAllTanks();
+            SetCameraTargets();
+            m_PlayerReady = true;
+            m_isRoundOngoing = false;
+        }
+
+        [ClientRpc]
+        private void RpcDisablePendingPlayer(TankManager tank)
+        {
+            tank.m_Instance.SetActive(false);
+        }
+
+        [TargetRpc]
+        private void RpcSyncPendingPlayer(NetworkConnection conn, List<TankManager> tanks, List<Transform> tanksTransform, List<GameObject> enemies)
+        {
+            m_Tanks = tanks;
+            m_TanksTransform = tanksTransform;
+            UpdateAllTanks();
+            SetCameraTargets();
+            m_PlayerReady = true;
+            m_isRoundOngoing = true;
         }
 
         public void RemovePlayer(GameObject disconnectedPlayer)
         {
-            for(int i = 0; i < m_TanksData.Count; i++)
+            for(int i = 0; i < m_Tanks.Count; i++)
             {
-                if(m_TanksData[i].m_Instance == disconnectedPlayer)
+                if(m_Tanks[i].m_Instance == disconnectedPlayer)
                 {
-                    m_TanksData.RemoveAt(i);
+                    m_Tanks.RemoveAt(i);
                     break;
                 }
             }
@@ -358,10 +441,34 @@ namespace Complete
                 }
             }
 
-            NetworkServer.Destroy(disconnectedPlayer);
+            SetCameraTargets();
+            RpcRemovePlayer(disconnectedPlayer);
+        }
+
+        [ClientRpc]
+        private void RpcRemovePlayer(GameObject disconnectedPlayer)
+        {
+            for (int i = 0; i < m_Tanks.Count; i++)
+            {
+                if (m_Tanks[i].m_Instance == disconnectedPlayer)
+                {
+                    m_Tanks.RemoveAt(i);
+                    break;
+                }
+            }
+
+            for (int i = 0; i < m_TanksTransform.Count; i++)
+            {
+                if (m_TanksTransform[i].gameObject == disconnectedPlayer)
+                {
+                    m_TanksTransform.RemoveAt(i);
+                    break;
+                }
+            }
 
             SetCameraTargets();
         }
+
 
         void OnGUI()
         {
