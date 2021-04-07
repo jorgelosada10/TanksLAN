@@ -7,9 +7,13 @@ using Complete;
 
 public class TanksNetworkManager : NetworkManager
 {
+    [SerializeField] private CanvasGroup m_Fade;
+    [SerializeField] private FadeManager m_FadeManager;
+
     [Header("Room Settings")]
     [SerializeField] private GameObject m_RoomPlayerPrefab;
 
+    private MatchRoomManager m_MatchRoomManager;
     private GameManager m_GameManager;
 
     [Scene]
@@ -17,6 +21,7 @@ public class TanksNetworkManager : NetworkManager
 
     [HideInInspector] public List<RoomPlayer> m_RoomPlayers;
     [HideInInspector] public List<TankManager> m_Tanks = new List<TankManager>();
+    [HideInInspector] public List<GameObject> m_Players;
 
     private Dictionary<NetworkConnection, RoomPlayer> m_Clients = new Dictionary<NetworkConnection, RoomPlayer>();
 
@@ -25,8 +30,6 @@ public class TanksNetworkManager : NetworkManager
         base.Awake();
         m_RoomPlayers = new List<RoomPlayer>();
     }
-
-    [HideInInspector] public List<GameObject> m_Players;
 
     public override void OnClientConnect(NetworkConnection conn)
     {
@@ -82,7 +85,17 @@ public class TanksNetworkManager : NetworkManager
         }
 
         if (currentPlayers == readyPlayers)
-            ServerChangeScene(m_GameplayScene);
+        {
+            StartCoroutine(StartGame());
+        }
+    }
+
+    private IEnumerator StartGame()
+    {
+        m_MatchRoomManager.FadeOut();
+        yield return new WaitForSeconds(1f);
+        yield return StartCoroutine(m_FadeManager.FadeOut(m_Fade));
+        ServerChangeScene(m_GameplayScene);
     }
 
     public override void OnServerReady(NetworkConnection conn)
@@ -156,6 +169,15 @@ public class TanksNetworkManager : NetworkManager
             }
             NetworkServer.Destroy(disconnectedPlayer);
         }
+
+        if(m_Tanks.Count < 1)
+        {
+            // Forces the server to shutdown.
+            Shutdown();
+
+            // Reset internal state of the server and start the server again.
+            Start();
+        }
     }
 
     public void DestroyAllRoomPlayers()
@@ -164,45 +186,19 @@ public class TanksNetworkManager : NetworkManager
         {
             if(roomPlayer != null)
             {
-
                 NetworkServer.Destroy(roomPlayer.gameObject);
             }
             RoomPlayer.ResetPlayerIndexDueDisc();
         }
     }
 
+    public void SetMatchRoomManagerInstance(MatchRoomManager matchRoomManager)
+    {
+        m_MatchRoomManager = matchRoomManager;
+    }
+
     public void SetGameManagerInstance(GameManager gameManager)
     {
         m_GameManager = gameManager;
-    }
-
-    void OnGUI()
-    {
-        NetworkManager manager = NetworkManager.singleton;
-        if (manager == null)
-            return;
-
-        if (manager.mode == NetworkManagerMode.ServerOnly)
-        {
-            if (GUILayout.Button("Stop Server"))
-            {
-                manager.StopServer();
-            }
-        }
-        else if (manager.mode == NetworkManagerMode.Host)
-        {
-            if (GUILayout.Button("Stop Host"))
-            {
-                //manager.StopHost();
-                NetworkManager.Shutdown();
-            }
-        }
-        else if (manager.mode == NetworkManagerMode.ClientOnly)
-        {
-            if (GUILayout.Button("Stop Client"))
-            {
-                manager.StopClient();
-            }
-        }
     }
 }

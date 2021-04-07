@@ -32,6 +32,8 @@ namespace Complete
 
         private TanksNetworkManager m_TanksNetwork;
         private bool m_PlayerReady = false;
+        private CanvasGroup m_Fade;
+        private FadeManager m_FadeManager;
 
         [SyncVar]
         private bool m_AreClientsReady = false;
@@ -43,6 +45,8 @@ namespace Complete
         private void Awake()
         {
             m_TanksNetwork = FindObjectOfType<TanksNetworkManager>();
+            m_Fade = m_TanksNetwork.GetComponentInChildren<CanvasGroup>();
+            m_FadeManager = m_TanksNetwork.GetComponentInChildren<FadeManager>();
         }
 
         public override void OnStartServer()
@@ -157,8 +161,10 @@ namespace Complete
             // Once execution has returned here, run the 'RoundEnding' coroutine, again don't return until it's finished
             yield return StartCoroutine(RoundEnding());
 
+            yield return StartCoroutine(m_FadeManager.FadeOut(m_Fade));
+
             // This code is not run until 'RoundEnding' has finished.  At which point, check if a game winner has been found
-            if (m_GameWinner != null)
+            if (m_GameWinner != null || m_Tanks.Count == 0)
             {
                 // If there is a game winner, restart the level
                 if(isServer)
@@ -206,7 +212,10 @@ namespace Complete
             {
                 m_isRoundOngoing = true;
             }
+
             m_MessageText.text = "ROUND " + m_RoundNumber;
+
+            yield return StartCoroutine(m_FadeManager.FadeIn(m_Fade));
 
             // Wait for the specified length of time until yielding control back to the game loop
             yield return m_StartWait;
@@ -214,6 +223,7 @@ namespace Complete
 
         private IEnumerator RoundPlaying()
         {
+
             // As soon as the round begins playing let the players control the tanks
             EnableTankControl();
 
@@ -467,18 +477,6 @@ namespace Complete
             }
 
             SetCameraTargets();
-        }
-
-
-        void OnGUI()
-        {
-            if (NetworkServer.active)
-            {
-                GUILayout.BeginArea(new Rect(Screen.width - 150f, 10f, 140f, 30f));
-                if (GUILayout.Button("Return to Room"))
-                    m_TanksNetwork.ServerChangeScene(m_TanksNetwork.onlineScene);
-                GUILayout.EndArea();
-            }
         }
     }
 }

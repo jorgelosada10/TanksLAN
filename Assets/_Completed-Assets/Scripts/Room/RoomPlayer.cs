@@ -27,8 +27,13 @@ public class RoomPlayer : NetworkBehaviour
     private Customizer m_Customizer;
     private Nicknamer m_Nicknamer;
     private MeshRenderer[] m_MeshRenderers;
+    private List<Text> m_PlayerReadyText = new List<Text>();
+    private MatchRoomManager m_MatchRoomManager;
 
     private static int m_PlayerIndex = 1;
+
+    [SyncVar]
+    private int m_PlayerId;
 
     private void Awake()
     {
@@ -43,11 +48,15 @@ public class RoomPlayer : NetworkBehaviour
         m_TankModel.SetActive(false);
 
         m_Camera.gameObject.SetActive(false);
+
+        if(NetworkManager.IsSceneActive(m_TanksNetwork.onlineScene))
+            m_MatchRoomManager = GameObject.FindGameObjectWithTag("MatchRoomManager").GetComponent<MatchRoomManager>();
     }
 
     public override void OnStartServer()
     {
         m_Nickname = $"Player{m_PlayerIndex}";
+        m_PlayerId = m_PlayerIndex;
         m_PlayerIndex++;
         m_Tank.SetTankNickname(m_Nickname);
     }
@@ -61,6 +70,15 @@ public class RoomPlayer : NetworkBehaviour
         m_Camera.gameObject.SetActive(true);
 
         m_Nicknamer.SetDefaultValue(m_Nickname);
+
+        if (NetworkManager.IsSceneActive(m_TanksNetwork.onlineScene))
+            CmdUpdatePlayers();
+    }
+
+    [Command]
+    private void CmdUpdatePlayers()
+    {
+        m_MatchRoomManager.m_Players++;
     }
 
     private void Start()
@@ -76,6 +94,7 @@ public class RoomPlayer : NetworkBehaviour
     {
         m_readyToBegin = readyState;
         m_TanksNetwork.ReadyStatusChanged();
+        m_MatchRoomManager.SetPlayerReady(m_PlayerId, readyState);
     }
 
     private void SyncReadyToBegin(bool oldReadyState, bool newReadyState)
@@ -159,5 +178,10 @@ public class RoomPlayer : NetworkBehaviour
     public static void ResetPlayerIndexDueDisc()
     {
         m_PlayerIndex = 1;
+    }
+
+    private void OnDestroy()
+    {
+        m_MatchRoomManager.m_Players--;
     }
 }
