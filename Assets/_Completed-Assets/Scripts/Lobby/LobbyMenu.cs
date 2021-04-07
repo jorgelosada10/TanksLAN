@@ -13,19 +13,26 @@ public class LobbyMenu : MonoBehaviour
     [SerializeField] private InputField m_IPAddressInput;
     [SerializeField] private GameObject m_IPList;
     [SerializeField] private GameObject m_IPButton;
+    private CanvasGroup m_Fade;
+    private FadeManager m_FadeManager;
 
-    private NetworkManager manager;
+    private NetworkManager m_TanksNetwork;
     private string serverIP;
-    readonly Dictionary<long, ServerResponse> discoveredServers = new Dictionary<long, ServerResponse>();
-    Dictionary<long, ServerResponse> discoveredServersTemp = new Dictionary<long, ServerResponse>();
+    readonly private Dictionary<long, ServerResponse> discoveredServers = new Dictionary<long, ServerResponse>();
+
+    private float m_IpButtonOffset = 30f;
+    private int m_IpButtonIndex = 0;
 
     public NetworkDiscovery networkDiscovery;
 
     void Awake()
     {
-        manager = FindObjectOfType<NetworkManager>();
+        m_TanksNetwork = FindObjectOfType<TanksNetworkManager>();
+        m_Fade = m_TanksNetwork.GetComponentInChildren<CanvasGroup>();
+        m_FadeManager = m_TanksNetwork.GetComponentInChildren<FadeManager>();
 
         m_IPAddressInput.onEndEdit.AddListener(delegate { SetIPAddressToJoin(); });
+        StartCoroutine(m_FadeManager.FadeIn(m_Fade));
     }
 
     public void RunServer()
@@ -35,9 +42,8 @@ public class LobbyMenu : MonoBehaviour
             if (!NetworkClient.active)
             {
                 discoveredServers.Clear();
-                manager.StartServer();
+                m_TanksNetwork.StartServer();
                 networkDiscovery.AdvertiseServer();
-
             }
         }
 
@@ -51,7 +57,7 @@ public class LobbyMenu : MonoBehaviour
             if (!NetworkClient.active)
             {
                 discoveredServers.Clear();
-                manager.StartHost();
+                m_TanksNetwork.StartHost();
                 networkDiscovery.AdvertiseServer();
             }
         }
@@ -66,10 +72,10 @@ public class LobbyMenu : MonoBehaviour
             if (!NetworkClient.active)
             {
                 if (serverIP != null)
-                    manager.networkAddress = serverIP;
+                    m_TanksNetwork.networkAddress = serverIP;
                 else
-                    manager.networkAddress = "localhost"; // For debugging. To be removed
-                manager.StartClient();
+                    m_TanksNetwork.networkAddress = "localhost"; // For debugging. To be removed
+                m_TanksNetwork.StartClient();
             }
         }
 
@@ -78,18 +84,18 @@ public class LobbyMenu : MonoBehaviour
 
     public void CancelJoinGame()
     {
-        if(NetworkClient.active)
+        if (NetworkClient.active)
         {
-            manager.StopClient();
+            m_TanksNetwork.StopClient();
         }
-        Debug.Log("Cancelling connection to " + manager.networkAddress);
+        Debug.Log("Cancelling connection to " + m_TanksNetwork.networkAddress);
     }
 
     private void AddressData()
     {
         if (NetworkServer.active)
         {
-            Debug.Log("Server: active. IP: " + manager.networkAddress + " - Transport: " + Transport.activeTransport);
+            Debug.Log("Server: active. IP: " + m_TanksNetwork.networkAddress + " - Transport: " + Transport.activeTransport);
         }
         else
         {
@@ -129,6 +135,11 @@ public class LobbyMenu : MonoBehaviour
 
     public void OnDiscoveredServer(ServerResponse info)
     {
+        m_IpButtonIndex = 0;
+        foreach (Transform transform in m_IPList.transform)
+        {
+            Destroy(transform.gameObject);
+        }
         // Note that you can check the versioning to decide if you can connect to the server or not using this method
         discoveredServers[info.serverId] = info;
         foreach (ServerResponse server in discoveredServers.Values)
@@ -142,10 +153,13 @@ public class LobbyMenu : MonoBehaviour
         Button button = Instantiate(m_IPButton, m_IPList.transform).GetComponent<Button>();
         button.GetComponentInChildren<Text>().text = ip;
         button.onClick.AddListener(() => JoinServer(info));
+        RectTransform buttonTransform = button.GetComponent<RectTransform>();
+        buttonTransform.localPosition = new Vector2(buttonTransform.localPosition.x, buttonTransform.localPosition.y + (m_IpButtonOffset * (-m_IpButtonIndex)));
+        m_IpButtonIndex++;
     }
 
     private void JoinServer(ServerResponse info)
     {
-        manager.StartClient(info.uri);
+        m_TanksNetwork.StartClient(info.uri);
     }
 }
