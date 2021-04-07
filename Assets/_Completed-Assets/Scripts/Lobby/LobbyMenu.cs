@@ -1,6 +1,8 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.SceneManagement;
 using Mirror;
 using Mirror.Discovery;
 
@@ -161,5 +163,18 @@ public class LobbyMenu : MonoBehaviour
     private void JoinServer(ServerResponse info)
     {
         m_TanksNetwork.StartClient(info.uri);
+    }
+
+    public void BackToMainMenu()
+    {
+        StartCoroutine(LoadScene());
+
+    }
+
+    private IEnumerator LoadScene()
+    {
+        yield return StartCoroutine(m_FadeManager.FadeOut(m_Fade));
+        SceneManager.LoadScene(0);
+        Destroy(gameObject);
     }
 }
