@@ -23,7 +23,6 @@ public class EnemySpawner : NetworkBehaviour
             var enemy = Instantiate(m_EnemyPrefab, m_SpawnPositions[random].position, m_SpawnPositions[random].rotation);
             m_Enemies.Add(enemy);
             tanksTransform.Add(enemy.transform);
-            m_SpawnPositions.RemoveAt(random);
             enemy.GetComponent<SyncColor>().m_SyncTankColor = m_TankColor;
 
             foreach (MeshRenderer meshRenderer in enemy.GetComponentsInChildren<MeshRenderer>())
@@ -52,6 +51,17 @@ public class EnemySpawner : NetworkBehaviour
         foreach(GameObject enemy in m_Enemies)
         {
             enemy.SetActive(false);
+        }
+    }
+
+    public void ResetEnemies()
+    {
+
+        for (int i = 0; i < m_Enemies.Count; i++)
+        {
+            int random = GetRandomSpawnPoint();
+            m_Enemies[i].transform.position = m_SpawnPositions[random].position;
+            m_Enemies[i].transform.rotation = m_SpawnPositions[random].rotation;
         }
     }
 

@@ -181,7 +181,7 @@ namespace Complete
                     m_TanksNetwork.StopHost();
                 }
 
-                SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex - 2);
+                SceneManager.LoadScene(m_TanksNetwork.offlineScene);
             }
             else
             {
@@ -243,7 +243,7 @@ namespace Complete
         {
             // Stop tanks from moving
             DisableTankControl();
-
+                      
             // Clear the winner from the previous round
             m_RoundWinner = null;
 
@@ -355,6 +355,7 @@ namespace Complete
         {
             m_EnemySpawner.DisableEnemies();
             m_EnemySpawner.EnableEnemies();
+            m_EnemySpawner.ResetEnemies();
             for (int i = 0; i < m_Tanks.Count; i++)
             {
                 m_Tanks[i].Reset();

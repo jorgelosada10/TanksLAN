@@ -182,6 +182,7 @@ public class RoomPlayer : NetworkBehaviour
 
     private void OnDestroy()
     {
+        if(m_MatchRoomManager != null)
         m_MatchRoomManager.m_Players--;
     }
 }
